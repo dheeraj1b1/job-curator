@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Curator – PDF to Master Tracker</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Job Curator</h1>
+        <p class="subtitle">PDF to Master Tracker</p>
+    </header>
+
+    <div class="card">
+        <form id="jobForm">
+            <div class="form-group">
+                <label for="pdf-files">1️⃣ Upload Job PDFs (Max 6)</label>
+                <div class="file-drop-area">
+                    <input type="file" id="pdf-files" name="files" multiple accept=".pdf" required>
+                    <span class="file-msg">Choose or drag PDFs here</span>
+                </div>
+                <small>Only .pdf files allowed</small>
+            </div>
+
+            <div class="form-group">
+                <label for="excel-file">2️⃣ Upload Previous Master Excel (Optional)</label>
+                <div class="file-drop-area">
+                    <input type="file" id="excel-file" name="previous_excel" accept=".xlsx">
+                    <span class="file-msg">Choose Excel file</span>
+                </div>
+                <small class="help-text">Upload yesterday’s Excel to append & avoid duplicates.<br>Leave empty for first run.</small>
+            </div>
+
+            <button type="submit" id="submitBtn">Process Jobs</button>
+        </form>
+
+        <div id="loading" class="hidden">
+            <div class="spinner"></div>
+            <p>Processing PDFs... Please wait.</p>
+        </div>
+
+        <div id="result" class="hidden">
+            <div class="success-icon">✅</div>
+            <h3>Success!</h3>
+            <p>Your files have been processed.</p>
+            <p id="download-msg">Downloading your results...</p>
+            <a id="downloadLink" href="#" class="download-btn">Click here if download doesn't start</a>
+        </div>
+
+        <div id="error" class="hidden">
+            <div class="error-icon">⚠️</div>
+            <h3>Error</h3>
+            <p id="error-msg">Something went wrong.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    const form = document.getElementById('jobForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const loadingDiv = document.getElementById('loading');
+    const resultDiv = document.getElementById('result');
+    const errorDiv = document.getElementById('error');
+    const errorMsg = document.getElementById('error-msg');
+    const downloadLink = document.getElementById('downloadLink');
+
+    // Simple file input UX
+    document.querySelectorAll('input[type=file]').forEach(input => {
+        input.addEventListener('change', (e) => {
+            const count = e.target.files.length;
+            const span = e.target.parentNode.querySelector('.file-msg');
+            if (count > 0) {
+                span.textContent = count === 1 ? e.target.files[0].name : `${count} files selected`;
+            } else {
+                span.textContent = input.hasAttribute('multiple') ? 'Choose or drag PDFs here' : 'Choose Excel file';
+            }
+        });
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // Reset UI
+        resultDiv.classList.add('hidden');
+        errorDiv.classList.add('hidden');
+        loadingDiv.classList.remove('hidden');
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Processing...";
+
+        const formData = new FormData(form);
+
+        try {
+            const response = await fetch('/process', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errText = await response.json();
+                throw new Error(errText.detail || 'Failed to process files');
+            }
+
+            // Handle Blob (File Download)
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            
+            // Trigger Download
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            // Attempt to get filename from header or default
+            const disposition = response.headers.get('Content-Disposition');
+            let filename = 'Job_Curator_Results.zip';
+            if (disposition && disposition.indexOf('filename=') !== -1) {
+                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+                if (matches != null && matches[1]) { 
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            // Show Success UI
+            downloadLink.href = url;
+            downloadLink.download = filename;
+            resultDiv.classList.remove('hidden');
+            window.URL.revokeObjectURL(url);
+
+        } catch (err) {
+            console.error(err);
+            errorMsg.textContent = err.message || "An unexpected error occurred.";
+            errorDiv.classList.remove('hidden');
+        } finally {
+            loadingDiv.classList.add('hidden');
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Process Jobs";
+        }
+    });
+</script>
+
+</body>
+</html>

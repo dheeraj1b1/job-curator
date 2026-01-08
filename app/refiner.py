@@ -99,26 +99,76 @@ def extract_valid_email(text: str) -> str:
     return "Apply via Company Portal"
 
 
-def extract_company(text: str, email: str) -> str:
-    # Priority 1: From Valid Email Domain
-    if email != "Apply via Company Portal":
-        domain = email.split('@')[1]
-        name = domain.split('.')[0]
-        # Cleanup (e.g., 'careers' -> invalid, but usually domain is company name)
-        if len(name) > 2:
-            return name.title()
+def extract_company(text: str, email: str, filename: str = "") -> str:
+    """
+    Extracts Company Name based on strict priority:
+    1. Email Domain (if corporate)
+    2. Text Patterns ("Hiring for X", "Client: X")
+    3. Filename Heuristic (Strips locations/numbers)
+    4. Fallback
+    """
+    # --- PRIORITY 1: Email Domain Inference ---
+    if email and "apply via company portal" not in email.lower():
+        try:
+            domain = email.split('@')[1]
+            # Remove common TLDs to get the base name
+            name = domain.split('.')[0]
+            if len(name) > 2:
+                return name.title()
+        except IndexError:
+            pass
 
-    # Priority 2: Regex Patterns in Text
+    # --- PRIORITY 2: Text-Based Patterns ---
+    # We look for Capitalized sequences associated with hiring phrases
     patterns = [
-        r"(?:Hiring for|Client[:\-])\s*([A-Z][a-z0-9]+(?:\s[A-Z][a-z0-9]+)*)",
-        r"([A-Z][a-z0-9]+)\s+is hiring"
+        # "Hiring for Zensar"
+        r"(?:Hiring for|Client[:\-])\s+([A-Z][a-z0-9]+(?:\s[A-Z][a-z0-9]+)*)",
+        # "Zensar is hiring"
+        r"([A-Z][a-z0-9]+(?:\s[A-Z][a-z0-9]+)*)\s+(?:is hiring|is looking for)",
+        # "Zensar Technologies"
+        r"([A-Z][a-z0-9]+)\s+(?:Pvt\.?\s*Ltd|Technologies|Solutions|Systems|Private\s*Limited)"
     ]
+
+    # Generic words to ignore if regex captures them
+    ignore_words = {"The", "A", "An", "This", "Our",
+                    "Client", "Company", "Organization", "We", "You"}
+
     for pat in patterns:
         m = re.search(pat, text)
         if m:
-            return m.group(1).strip()
+            candidate = m.group(1).strip()
+            # Validation: Length > 2 and not a generic word
+            if len(candidate) > 2 and candidate.title() not in ignore_words:
+                return candidate.title()
 
-    # Priority 3: Fallback
+    # --- PRIORITY 3: PDF Filename Heuristic ---
+    if filename:
+        # Normalize: Remove extension, replace separators with space
+        clean_name = filename.rsplit('.', 1)[0]
+        clean_name = re.sub(r'[_\-]', ' ', clean_name)
+
+        tokens = clean_name.split()
+        filtered_tokens = []
+
+        # Build strict ignore list (Cities + Common junk)
+        # Assuming INDIAN_CITIES and FOREIGN_LOCATIONS are imported from config
+        locations_lower = {loc.lower()
+                           for loc in INDIAN_CITIES + FOREIGN_LOCATIONS}
+        junk_lower = {"resume", "cv", "job", "jobs",
+                      "jd", "hiring", "opening", "profile"}
+
+        for token in tokens:
+            t_lower = token.lower()
+            # Filter out numbers, locations, and junk words
+            if (not token.isdigit() and
+                t_lower not in locations_lower and
+                    t_lower not in junk_lower):
+                filtered_tokens.append(token)
+
+        if filtered_tokens:
+            return " ".join(filtered_tokens).title()
+
+    # --- PRIORITY 4: Fallback ---
     return "Confidential / Client via Consultancy"
 
 

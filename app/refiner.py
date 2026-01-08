@@ -170,8 +170,36 @@ def extract_domain(text: str) -> str:
 
 
 def generate_tech_notes(text: str) -> str:
+    """
+    Extracts top 4 skills based on strict priority order.
+    Returns 'Skill1 + Skill2...' or 'QA Role' if none found.
+    """
     t = text.lower()
-    keywords = ["java", "python", "selenium",
-                "manual", "api", "sql", "appium", "playwright"]
-    found = [k.title() for k in keywords if k in t]
-    return " + ".join(found) if found else "QA Role"
+
+    # Priority Order: (Output Format, Search Keyword)
+    # The order of this list enforces the priority requirement.
+    priority_map = [
+        ("Java", "java"),
+        ("Python", "python"),
+        ("Selenium", "selenium"),
+        ("API", "api"),
+        ("Manual", "manual"),
+        ("SQL", "sql"),
+        ("Appium", "appium"),
+        ("Playwright", "playwright")
+    ]
+
+    found_skills = []
+
+    for display_name, keyword in priority_map:
+        if keyword in t:
+            found_skills.append(display_name)
+
+            # STRICT REQUIREMENT: Max 4 skills
+            if len(found_skills) >= 4:
+                break
+
+    if not found_skills:
+        return "QA Role"
+
+    return " + ".join(found_skills)

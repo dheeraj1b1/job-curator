@@ -53,19 +53,48 @@ def refine_job_batch(raw_jobs: list) -> list:
 
 
 def extract_valid_email(text: str) -> str:
-    # Regex for all emails
+    """
+    Extracts the best contact email based on priority rules.
+    Priority 1: Corporate/Company Domain (Immediate Return)
+    Priority 2: Allowed Generic (Gmail/Outlook) - (Fallback)
+    Priority 3: Blocked (JobCurator/Telegram/WhatsApp) - (Ignored)
+    """
+    # Regex to find all potential email addresses
     emails = re.findall(
         r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
 
-    # Filter out generic/aggregator domains
-    valid_emails = []
+    fallback_candidates = []
+
+    # Priority 3: Strictly Blocked Patterns (never use)
+    blocked_keywords = ["jobcurator", "telegram",
+                        "whatsapp", "noreply", "donotreply"]
+
+    # Priority 2: Allowed Generic Domains (use only if no corporate email exists)
+    allowed_generic_domains = {
+        "gmail.com", "outlook.com", "yahoo.com",
+        "hotmail.com", "rediffmail.com", "icloud.com"
+    }
+
     for email in emails:
         domain = email.split('@')[1].lower()
-        if domain not in IGNORE_DOMAINS:
-            valid_emails.append(email)
 
-    if valid_emails:
-        return valid_emails[0]  # Return first valid company email
+        # 1. CHECK PRIORITY 3 (BLOCKED)
+        if any(keyword in domain for keyword in blocked_keywords):
+            continue
+
+        # 2. CHECK PRIORITY 2 (ALLOWED GENERIC)
+        if domain in allowed_generic_domains:
+            fallback_candidates.append(email)
+            continue
+
+        # 3. CHECK PRIORITY 1 (CORPORATE)
+        # If it's not blocked and not generic, we assume it's a priority corporate email.
+        # We prefer the first corporate email found.
+        return email
+
+    # 4. FALLBACK SELECTION
+    if fallback_candidates:
+        return fallback_candidates[0]
 
     return "Apply via Company Portal"
 

@@ -5,6 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Job Curator – PDF to Master Tracker</title>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Additional styles for the new progress UI */
+        .progress-container {
+            margin-top: 25px;
+            text-align: center;
+        }
+        
+        .progress-text {
+            font-weight: 600;
+            color: var(--text-color);
+            margin-bottom: 5px;
+            min-height: 1.5em; /* Prevent layout jump */
+        }
+        
+        .timer-text {
+            font-size: 0.85rem;
+            color: #6b7280;
+            font-family: monospace;
+        }
+
+        /* Spinner tweak for better visibility */
+        .spinner {
+            width: 35px;
+            height: 35px;
+            border-width: 4px;
+            margin-bottom: 15px;
+        }
+    </style>
 </head>
 <body>
 
@@ -37,9 +65,10 @@
             <button type="submit" id="submitBtn">Process Jobs</button>
         </form>
 
-        <div id="loading" class="hidden">
+        <div id="loading" class="hidden progress-container">
             <div class="spinner"></div>
-            <p>Processing PDFs... Please wait.</p>
+            <p id="progress-msg" class="progress-text">Initializing...</p>
+            <p id="timer" class="timer-text">0.0s</p>
         </div>
 
         <div id="result" class="hidden">
@@ -61,13 +90,30 @@
 <script>
     const form = document.getElementById('jobForm');
     const submitBtn = document.getElementById('submitBtn');
+    
+    // Status Elements
     const loadingDiv = document.getElementById('loading');
+    const progressMsg = document.getElementById('progress-msg');
+    const timerText = document.getElementById('timer');
+    
     const resultDiv = document.getElementById('result');
     const errorDiv = document.getElementById('error');
     const errorMsg = document.getElementById('error-msg');
     const downloadLink = document.getElementById('downloadLink');
 
-    // Simple file input UX
+    // Messages to cycle through based on elapsed time (simulated progress)
+    const PROGRESS_STAGES = [
+        { time: 0, text: "Uploading PDFs..." },
+        { time: 2, text: "Parsing job descriptions..." },
+        { time: 8, text: "Applying deterministic rules..." },
+        { time: 15, text: "Refining & Normalizing data..." },
+        { time: 25, text: "Generating Excel file..." },
+        { time: 40, text: "Almost there! Large files take a moment..." }
+    ];
+
+    let timerInterval;
+
+    // File Input UX
     document.querySelectorAll('input[type=file]').forEach(input => {
         input.addEventListener('change', (e) => {
             const count = e.target.files.length;
@@ -83,16 +129,38 @@
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        // Reset UI
+        // 1. Reset UI
         resultDiv.classList.add('hidden');
         errorDiv.classList.add('hidden');
         loadingDiv.classList.remove('hidden');
         submitBtn.disabled = true;
         submitBtn.textContent = "Processing...";
+        submitBtn.style.opacity = "0.7";
+        
+        // 2. Initialize Timer & Progress Text
+        let startTime = Date.now();
+        progressMsg.textContent = PROGRESS_STAGES[0].text;
+        timerText.textContent = "0.0s";
+
+        timerInterval = setInterval(() => {
+            const elapsedSeconds = (Date.now() - startTime) / 1000;
+            timerText.textContent = elapsedSeconds.toFixed(1) + "s";
+
+            // Update text based on elapsed time
+            // Find the last stage that is <= current elapsed time
+            const currentStage = PROGRESS_STAGES.reduce((prev, curr) => {
+                return (elapsedSeconds >= curr.time) ? curr : prev;
+            });
+            
+            if (currentStage) {
+                progressMsg.textContent = currentStage.text;
+            }
+        }, 100); // Update every 100ms for smooth timer
 
         const formData = new FormData(form);
 
         try {
+            // 3. Send Request
             const response = await fetch('/process', {
                 method: 'POST',
                 body: formData
@@ -103,23 +171,24 @@
                 throw new Error(errText.detail || 'Failed to process files');
             }
 
-            // Handle Blob (File Download)
+            // 4. Handle Success (Blob Download)
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             
-            // Trigger Download
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            // Attempt to get filename from header or default
+            // Extract filename from header
             const disposition = response.headers.get('Content-Disposition');
-            let filename = 'Job_Curator_Results.zip';
+            let filename = 'Job_Curator_Results.xlsx';
             if (disposition && disposition.indexOf('filename=') !== -1) {
                 const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
                 if (matches != null && matches[1]) { 
                     filename = matches[1].replace(/['"]/g, '');
                 }
             }
+
+            // Auto-trigger download
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
             a.download = filename;
             document.body.appendChild(a);
             a.click();
@@ -128,16 +197,21 @@
             downloadLink.href = url;
             downloadLink.download = filename;
             resultDiv.classList.remove('hidden');
-            window.URL.revokeObjectURL(url);
+            
+            // Clean up blob URL after a delay
+            setTimeout(() => window.URL.revokeObjectURL(url), 60000);
 
         } catch (err) {
             console.error(err);
             errorMsg.textContent = err.message || "An unexpected error occurred.";
             errorDiv.classList.remove('hidden');
         } finally {
+            // 5. Cleanup
+            clearInterval(timerInterval);
             loadingDiv.classList.add('hidden');
             submitBtn.disabled = false;
             submitBtn.textContent = "Process Jobs";
+            submitBtn.style.opacity = "1";
         }
     });
 </script>

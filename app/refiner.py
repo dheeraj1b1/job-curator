@@ -7,6 +7,32 @@ from app.config import (
 )
 
 
+def format_experience(exp_min: int, exp_max: int) -> str:
+    """
+    Normalizes experience display for the final Excel.
+    Caps upper limit at 5 to match the tool's specific focus range.
+    """
+    # Rule 5: Fallback if None
+    if exp_min is None:
+        return "1 – 5 yrs"
+
+    # Rule 2: Cap max experience at 5
+    effective_max = exp_max
+    if effective_max is not None and effective_max > 5:
+        effective_max = 5
+
+    # Rule 1: If max is None (e.g., "3+ years"), default top to 5
+    if effective_max is None:
+        effective_max = 5
+
+    # Rule 3: Single value display
+    if exp_min == effective_max:
+        return f"{exp_min} yrs"
+
+    # Rule 4: Standard range display
+    return f"{exp_min} – {effective_max} yrs"
+
+
 def refine_job_batch(raw_jobs: list) -> list:
     """
     Stage 2: Transforms raw blocks into Final Master Tracker rows.
@@ -32,11 +58,14 @@ def refine_job_batch(raw_jobs: list) -> list:
         location = extract_location(raw_text)
         mode = extract_mode(raw_text, location)
 
+        # 5. Experience Normalization
+        exp_display = format_experience(job.get('Exp_Min'), job.get('Exp_Max'))
+
         entry = {
             "S.No": len(refined) + 1,
             "Company": company,
             "Role": role,
-            "Exp": f"{job.get('Exp_Min')} - {job.get('Exp_Max', '?')} yrs",
+            "Exp": exp_display,  # Updated to use normalized helper
             "Location": location,
             "Mode": mode,
             "Email": valid_email,
